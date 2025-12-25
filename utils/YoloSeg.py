@@ -128,8 +128,6 @@ class YoloSeg:
                 # 高斯模糊
                 m = cv2.blur(m,blur_size)
                 m = (m > self.bin).astype(np.uint8) * 255
-                cv2.imshow("mask",m)
-                cv2.waitKey(0)
                 mask_images.append(m)
 
             for box, score, class_id, mask in zip(boxes, scores, class_ids, mask_images):

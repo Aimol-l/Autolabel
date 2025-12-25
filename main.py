@@ -16,5 +16,5 @@ if __name__ == "__main__":
     # obb.inference("assets/images/obb", output_path,label_path,"none",padding=True)
 
     seg = YoloSeg("models/seg-yolo-fp32.onnx",size=(224,512))
-    seg.set_params(needs=[],conf=0.5, nms=0.5, bin=0.5, classes="config/seg.yaml")
+    seg.set_params(needs=[],conf=0.5, nms=0.8, bin=0.5, classes="config/seg.yaml")
     seg.inference("assets/images/segment", output_path,label_path,label_type="none",padding=False)
