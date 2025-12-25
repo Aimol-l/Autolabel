@@ -97,7 +97,6 @@ class YoloSeg:
                 boxes, scores, class_ids, mask_coeffs = self._postprocess(output0, scale, pad, ori_img.shape[:2])
             else:
                 ori_img, input_tensor = self._preprocess_resize(img_path)
-
                 # output0 :[1,8400,38]
                 # output1 :[1,32,160,160]
                 output0, output1 = self.session.run(self.output_names, {self.input_name: input_tensor})
@@ -117,8 +116,7 @@ class YoloSeg:
             masks = 1 / (1 + np.exp(-masks))
             masks = masks.reshape(-1,output1[0].shape[1],output1[0].shape[2])
             mask_images = []
-
-            blur_size = (int(ori_img.shape[1]/self.input_width),int(ori_img.shape[0]/self.input_height))
+            blur_size = (int(ori_img.shape[1]/masks.shape[2]),int(ori_img.shape[0]/masks.shape[1]))
             for m in masks:
                 # m不能直接resize到原图大小,因为推理图片是经过padding的.得先去除padding再resize
                 if padding:
@@ -126,10 +124,12 @@ class YoloSeg:
                     m = m[pad[0]:self.input_shape[2]-pad[0],pad[1]:self.input_shape[3]-pad[1]]
                     m = cv2.resize(m, (ori_img.shape[1], ori_img.shape[0]))
                 else:
-                    m = cv2.resize(m, (ori_img.shape[1], ori_img.shape[0]))
+                    m = cv2.resize(m, (ori_img.shape[1], ori_img.shape[0]),interpolation=cv2.INTER_CUBIC)
                 # 高斯模糊
                 m = cv2.blur(m,blur_size)
                 m = (m > self.bin).astype(np.uint8) * 255
+                cv2.imshow("mask",m)
+                cv2.waitKey(0)
                 mask_images.append(m)
 
             for box, score, class_id, mask in zip(boxes, scores, class_ids, mask_images):
@@ -144,6 +144,7 @@ class YoloSeg:
                 mask_ = cv2.rectangle(mask_, (x1, y1), (x2, y2), (255), -1)
                 mask = cv2.bitwise_and(mask, mask_)
                 mask_bool = mask > 0
+
                 if label_type == "labelyou":
                     label_path = os.path.join(label_dir, fname + f".json")
                     self._gen_labelyou(class_id,label_path,ori_path,mask,ori_img.shape)
@@ -221,7 +222,6 @@ class YoloSeg:
         image = cv2.imread(input_path)
         temp = cv2.resize(image, (self.input_width, self.input_height))
         img = cv2.dnn.blobFromImage(temp, 1/255.0, (self.input_width, self.input_height), swapRB=True)
-        print(img)
         return image, img
 
     def _postprocess(self, output, orig_shape):
@@ -242,13 +242,11 @@ class YoloSeg:
         class_ids = class_ids[mask]
         mask_coeffs = mask_coeffs[mask]
 
+        boxes[:, [0, 2]] /= self.input_width
+        boxes[:, [1, 3]] /= self.input_height
+        boxes[:, [0, 2]] *= orig_shape[1]
+        boxes[:, [1, 3]] *= orig_shape[0]
         boxes = self._xywh2xyxy(boxes)
-
-        scale_x = orig_shape[1] / self.input_width
-        scale_y = orig_shape[0] / self.input_height
-
-        boxes[:, [0, 2]] *= scale_x
-        boxes[:, [1, 3]] *= scale_y
 
         boxes[:, [0, 2]] = np.clip(boxes[:, [0, 2]], 0, orig_shape[1])
         boxes[:, [1, 3]] = np.clip(boxes[:, [1, 3]], 0, orig_shape[0])
@@ -265,7 +263,6 @@ class YoloSeg:
             cls_scores = confidences[cls_idx_mask]
             cls_ids = class_ids[cls_idx_mask]
             cls_mask = mask_coeffs[cls_idx_mask]
-
             keep = self._nms(cls_boxes, cls_scores, self.nms)
             if len(keep) > 0:
                 final_boxes.append(cls_boxes[keep])
